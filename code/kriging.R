@@ -13,7 +13,7 @@ library(ggmap)
 ozone = read.csv("../data/oz96_utm.csv")
 
 ## plot map
-labasin = get_stamenmap(bbox = c(-119, 33, -116, 35), zoom = 9, maptype = "toner")
+labasin = get_stamenmap(bbox = c(-119, 33, -116, 35), zoom = 9, maptype = "terrain")
 ggmap(labasin) +
   geom_point(data = ozone, 
              aes(x = LON, y = LAT),
@@ -23,12 +23,14 @@ ggmap(labasin) +
 ggsave("../plots/data_map.png", width = 5, height = 3.2)
 
 ## Fit variogram model
-la.var = variogram(MAXDAY ~ 1, locations = ~ LAT + LON ,data = ozone)
+la.var = variogram(MAXDAY ~ 1, locations = ~ LAT + LON, data = ozone, cutoff = 1.2)
 la.fit = fit.variogram(la.var, model=vgm(15, "Pow"))
+
+plot(la.var, la.fit)
 
 dists = seq(0, max(la.var$dist), length.out = 100)
 var.pts = data.frame(gamma = la.var$gamma, dist = la.var$dist)
-var.fit = data.frame(pow = la.fit$psill * dists^la.fit$range, dist = dists)
+var.fit = data.frame(pow = (la.fit$psill * dists^la.fit$range), dist = dists)
   
 ggplot() +
   geom_point(data = data.frame(gamma = la.var$gamma, dist = la.var$dist),
@@ -46,7 +48,7 @@ print(la.fit)
 
 
 ## Kriging Example
-example.map = get_stamenmap(bbox = c(-118.2, 33.8, -117.8, 34.2), zoom = 11, maptype = "toner")
+example.map = get_stamenmap(bbox = c(-118.2, 33.8, -117.8, 34.2), zoom = 11, maptype = "terrain")
 example.data = ozone %>%
   filter(between(LON, -118.2, -117.8),
          between(LAT, 33.8, 34.2))
@@ -79,8 +81,8 @@ example.krig = SpatialExtremes::kriging(example.data$MAXDAY,
                                         as.matrix(example.data[,c("LON", "LAT")]), 
                                         krig.coord = matrix(c(-118, 34), 1, 2),
                                         cov.mod = "powexp",
-                                        sill = 14.08, 
-                                        range = 0.255,
+                                        sill = la.fit$psill, 
+                                        range = la.fit$range,
                                         smooth = 0.5)
 
 ggmap(example.map) +
@@ -133,9 +135,12 @@ ggsave("../plots/example_pred.png", width = 3, height = 3.2)
 sum(example.krig$weights * example.data$MAXDAY)
 example.krig$krig.est
 
+
 ## Estinate interpolation points (Kriging)
-lats = seq(33, 35, length.out = 200)
-lons = seq(-119, -116, length.out = 200)
+labasin = get_stamenmap(bbox = c(-119, 33, -116, 35), zoom = 9, maptype = "toner")
+
+lats = seq(33, 35, length.out = 300)
+lons = seq(-119, -116, length.out = 300)
 la.grid  = expand.grid(lats, lons)
 
 coordinates(ozone) = ~ LAT + LON
@@ -194,5 +199,6 @@ ggmap(labasin) +
   guides(fill = guide_legend(reverse = TRUE)) +
   labs(fill="Prediction variance")
 ggsave("../plots/uncertainty_map.png", width = 5, height = 3.2)
+
 
 
